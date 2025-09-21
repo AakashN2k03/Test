@@ -1,18 +1,13 @@
-name: Sync Main to Backup (PR with Fallback)
-
+name: Sync Main to Backup (Auto)
 on:
   schedule:
     - cron: "0 1 * * *"   # daily at 1 AM UTC
   workflow_dispatch:      # allows manual runs
-
 permissions:
   contents: write
-  pull-requests: write
-
 concurrency:
   group: sync-main-backup
   cancel-in-progress: true
-
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -29,32 +24,10 @@ jobs:
           git config user.name "Sync Bot"
           git config user.email "sync-bot@example.com"
           
-      # 3️⃣ Fetch both branches
-      - name: Fetch branches
+      # 3️⃣ Sync main to backup directly
+      - name: Sync main to backup
         run: |
-          git fetch origin main
-          git fetch origin backup
-          
-      # 4️⃣ Check if branches differ
-      - name: Check for differences
-        id: check_diff
-        run: |
-          if git diff --quiet origin/main origin/backup; then
-            echo "diff_exists=false" >> $GITHUB_OUTPUT
-            echo "Branches are identical - no PR needed"
-          else
-            echo "diff_exists=true" >> $GITHUB_OUTPUT
-            echo "Differences found - will create PR"
-          fi
-          
-      # 5️⃣ Create PR only if changes exist
-      - name: Create Pull Request
-        if: steps.check_diff.outputs.diff_exists == 'true'
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "Sync main to backup"
-          branch: "sync-main-to-backup"
-          base: "backup"
-          title: "Sync main to backup"
-          body: "This PR syncs the latest changes from main to backup. Please review and merge manually."
+          git fetch origin
+          git checkout backup
+          git merge origin/main --no-edit
+          git push origin backup
