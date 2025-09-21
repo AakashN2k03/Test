@@ -29,17 +29,25 @@ jobs:
           git config user.name "Sync Bot"
           git config user.email "sync-bot@example.com"
           
-      # 3️⃣ Check if branches differ
+      # 3️⃣ Fetch both branches
+      - name: Fetch branches
+        run: |
+          git fetch origin main
+          git fetch origin backup
+          
+      # 4️⃣ Check if branches differ
       - name: Check for differences
         id: check_diff
         run: |
-          if git diff --quiet main backup; then
+          if git diff --quiet origin/main origin/backup; then
             echo "diff_exists=false" >> $GITHUB_OUTPUT
+            echo "Branches are identical - no PR needed"
           else
             echo "diff_exists=true" >> $GITHUB_OUTPUT
+            echo "Differences found - will create PR"
           fi
           
-      # 4️⃣ Create PR only if changes exist
+      # 5️⃣ Create PR only if changes exist
       - name: Create Pull Request
         if: steps.check_diff.outputs.diff_exists == 'true'
         uses: peter-evans/create-pull-request@v5
