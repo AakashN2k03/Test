@@ -1,12 +1,10 @@
-name: Sync Main to Backup (PR)
-
+name: Sync Main to Backup (Auto)
 on:
   schedule:
-    - cron: "0 1 * * *"  # Daily at 1 AM UTC
-  workflow_dispatch:      # Allows manual runs
+    - cron: "0 1 * * *"   # daily at 1 AM UTC
+  workflow_dispatch:      # allows manual runs
 permissions:
   contents: write
-  pull-requests: write # This is a new permission needed for creating PRs
 concurrency:
   group: sync-main-backup
   cancel-in-progress: true
@@ -26,34 +24,10 @@ jobs:
           git config user.name "Sync Bot"
           git config user.email "sync-bot@example.com"
           
-      # 3️⃣ Create and push a new branch with changes from main
-      - name: Create sync branch
+      # 3️⃣ Sync main to backup directly
+      - name: Sync main to backup
         run: |
           git fetch origin
-          git checkout -b sync-main-to-backup-$(date +%s) origin/main
-          
-      # 4️⃣ Create a pull request
-      - name: Create Pull Request
-        id: create-pr
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const { context } = github;
-            const branchName = process.env.GITHUB_REF_NAME;
-            const prTitle = 'Merge main into backup';
-            const prBody = 'This PR was automatically created to sync changes from the `main` branch to the `backup` branch. Please review and approve.';
-            
-            try {
-              const { data: pull } = await github.rest.pulls.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: prTitle,
-                head: branchName,
-                base: 'backup',
-                body: prBody,
-              });
-              console.log(`Pull Request created: ${pull.html_url}`);
-            } catch (error) {
-              console.log('No new changes to sync. Skipping PR creation.');
-              console.log('Error:', error.message);
-            }
+          git checkout backup
+          git merge origin/main --no-edit
+          git push origin backup
