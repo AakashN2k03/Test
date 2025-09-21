@@ -1,41 +1,33 @@
-name: Sync Main to Backup
-
+name: Sync Main to Backup (Auto)
 on:
   schedule:
     - cron: "0 1 * * *"   # daily at 1 AM UTC
   workflow_dispatch:      # allows manual runs
-
 permissions:
   contents: write
-
 concurrency:
   group: sync-main-backup
   cancel-in-progress: true
-
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      # 1️⃣ Checkout main branch
-      - name: Checkout main
+      # 1️⃣ Checkout with full history
+      - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          ref: main
-
+          
       # 2️⃣ Configure Git user
       - name: Configure Git
         run: |
           git config user.name "Sync Bot"
           git config user.email "sync-bot@example.com"
-
-      # 3️⃣ Create Pull Request from main → backup
-      - name: Create Pull Request from main to backup
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "Sync main into backup"
-          base: backup        # target branch
-          title: "Sync main into backup"
-          body: "This PR merges changes from main into backup for review and approval."
-          delete-branch: false
+          
+      # 3️⃣ Sync main to backup directly
+      - name: Sync main to backup
+        run: |
+          git fetch origin
+          git checkout backup
+          git merge origin/main --no-edit
+          git push origin backup
