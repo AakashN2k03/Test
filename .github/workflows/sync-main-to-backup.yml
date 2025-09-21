@@ -1,4 +1,4 @@
-name: Sync Main to Backup (Manual Approval via PR)
+name: Sync Main to Backup (PR with Fallback)
 
 on:
   schedule:
@@ -29,8 +29,19 @@ jobs:
           git config user.name "Sync Bot"
           git config user.email "sync-bot@example.com"
           
-      # 3️⃣ Create a PR from main to backup
+      # 3️⃣ Check if branches differ
+      - name: Check for differences
+        id: check_diff
+        run: |
+          if git diff --quiet main backup; then
+            echo "diff_exists=false" >> $GITHUB_OUTPUT
+          else
+            echo "diff_exists=true" >> $GITHUB_OUTPUT
+          fi
+          
+      # 4️⃣ Create PR only if changes exist
       - name: Create Pull Request
+        if: steps.check_diff.outputs.diff_exists == 'true'
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
