@@ -1,10 +1,11 @@
-name: Sync Main to Backup (Auto)
+name: Sync Main to Backup
 on:
   schedule:
     - cron: "0 1 * * *"   # daily at 1 AM UTC
   workflow_dispatch:      # allows manual runs
 permissions:
   contents: write
+  pull-requests: write
 concurrency:
   group: sync-main-backup
   cancel-in-progress: true
@@ -12,11 +13,12 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      # 1️⃣ Checkout with full history
-      - name: Checkout
+      # 1️⃣ Checkout backup branch (the target branch)
+      - name: Checkout backup branch
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+          ref: backup
           
       # 2️⃣ Configure Git user
       - name: Configure Git
@@ -24,10 +26,60 @@ jobs:
           git config user.name "Sync Bot"
           git config user.email "sync-bot@example.com"
           
-      # 3️⃣ Sync main to backup directly
-      - name: Sync main to backup
+      # 3️⃣ Check if there are differences between main and backup
+      - name: Check for differences
+        id: check_diff
         run: |
-          git fetch origin
-          git checkout backup
+          git fetch origin main
+          if git diff --quiet HEAD origin/main; then
+            echo "no_changes=true" >> $GITHUB_OUTPUT
+            echo "No changes between main and backup"
+          else
+            echo "no_changes=false" >> $GITHUB_OUTPUT
+            echo "Changes detected between main and backup"
+          fi
+          
+      # 4️⃣ Merge main into backup (only if there are changes)
+      - name: Merge main into backup
+        if: steps.check_diff.outputs.no_changes == 'false'
+        run: |
           git merge origin/main --no-edit
-          git push origin backup
+          
+      # 5️⃣ Create Pull Request for review (only if there are changes)
+      - name: Create Pull Request for Manual Review
+        if: steps.check_diff.outputs.no_changes == 'false'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "🔄 Sync main into backup"
+          branch: sync-main-to-backup-${{ github.run_number }}
+          base: backup
+          title: "🔄 Sync main → backup (Manual Review Required)"
+          body: |
+            ## 📋 Sync Summary
+            This PR contains changes from the `main` branch that need to be reviewed before merging into `backup`.
+            
+            ### 🔍 What's Changed
+            - Latest commits from `main` branch
+            - Auto-generated sync on ${{ github.event.schedule && 'schedule' || 'manual trigger' }}
+            
+            ### ⚡ Next Steps
+            1. **Review** the changes below
+            2. **Approve** if everything looks good
+            3. **Merge** to complete the sync
+            
+            ### 🤖 Auto-generated
+            This PR was automatically created by the sync workflow.
+            
+            **Run ID:** ${{ github.run_id }}
+            **Triggered:** ${{ github.event_name }}
+          delete-branch: true
+          
+      # 6️⃣ Log result
+      - name: Log sync result
+        run: |
+          if [ "${{ steps.check_diff.outputs.no_changes }}" == "true" ]; then
+            echo "✅ No sync needed - backup is already up to date with main"
+          else
+            echo "✅ Sync PR created successfully - awaiting manual review"
+          fi
