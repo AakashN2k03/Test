@@ -1,11 +1,12 @@
-name: Sync Main to Backup
+name: Sync Main to Backup (PR)
+
 on:
   schedule:
-    - cron: "0 1 * * *"   # daily at 1 AM UTC
-  workflow_dispatch:      # allows manual runs
+    - cron: "0 1 * * *"  # Daily at 1 AM UTC
+  workflow_dispatch:      # Allows manual runs
 permissions:
   contents: write
-  pull-requests: write
+  pull-requests: write # This is a new permission needed for creating PRs
 concurrency:
   group: sync-main-backup
   cancel-in-progress: true
@@ -13,12 +14,11 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      # 1️⃣ Checkout backup branch (the target branch)
-      - name: Checkout backup branch
+      # 1️⃣ Checkout with full history
+      - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          ref: backup
           
       # 2️⃣ Configure Git user
       - name: Configure Git
@@ -26,60 +26,34 @@ jobs:
           git config user.name "Sync Bot"
           git config user.email "sync-bot@example.com"
           
-      # 3️⃣ Check if there are differences between main and backup
-      - name: Check for differences
-        id: check_diff
+      # 3️⃣ Create and push a new branch with changes from main
+      - name: Create sync branch
         run: |
-          git fetch origin main
-          if git diff --quiet HEAD origin/main; then
-            echo "no_changes=true" >> $GITHUB_OUTPUT
-            echo "No changes between main and backup"
-          else
-            echo "no_changes=false" >> $GITHUB_OUTPUT
-            echo "Changes detected between main and backup"
-          fi
+          git fetch origin
+          git checkout -b sync-main-to-backup-$(date +%s) origin/main
           
-      # 4️⃣ Merge main into backup (only if there are changes)
-      - name: Merge main into backup
-        if: steps.check_diff.outputs.no_changes == 'false'
-        run: |
-          git merge origin/main --no-edit
-          
-      # 5️⃣ Create Pull Request for review (only if there are changes)
-      - name: Create Pull Request for Manual Review
-        if: steps.check_diff.outputs.no_changes == 'false'
-        uses: peter-evans/create-pull-request@v5
+      # 4️⃣ Create a pull request
+      - name: Create Pull Request
+        id: create-pr
+        uses: actions/github-script@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "🔄 Sync main into backup"
-          branch: sync-main-to-backup-${{ github.run_number }}
-          base: backup
-          title: "🔄 Sync main → backup (Manual Review Required)"
-          body: |
-            ## 📋 Sync Summary
-            This PR contains changes from the `main` branch that need to be reviewed before merging into `backup`.
+          script: |
+            const { context } = github;
+            const branchName = process.env.GITHUB_REF_NAME;
+            const prTitle = 'Merge main into backup';
+            const prBody = 'This PR was automatically created to sync changes from the `main` branch to the `backup` branch. Please review and approve.';
             
-            ### 🔍 What's Changed
-            - Latest commits from `main` branch
-            - Auto-generated sync on ${{ github.event.schedule && 'schedule' || 'manual trigger' }}
-            
-            ### ⚡ Next Steps
-            1. **Review** the changes below
-            2. **Approve** if everything looks good
-            3. **Merge** to complete the sync
-            
-            ### 🤖 Auto-generated
-            This PR was automatically created by the sync workflow.
-            
-            **Run ID:** ${{ github.run_id }}
-            **Triggered:** ${{ github.event_name }}
-          delete-branch: true
-          
-      # 6️⃣ Log result
-      - name: Log sync result
-        run: |
-          if [ "${{ steps.check_diff.outputs.no_changes }}" == "true" ]; then
-            echo "✅ No sync needed - backup is already up to date with main"
-          else
-            echo "✅ Sync PR created successfully - awaiting manual review"
-          fi
+            try {
+              const { data: pull } = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: prTitle,
+                head: branchName,
+                base: 'backup',
+                body: prBody,
+              });
+              console.log(`Pull Request created: ${pull.html_url}`);
+            } catch (error) {
+              console.log('No new changes to sync. Skipping PR creation.');
+              console.log('Error:', error.message);
+            }
